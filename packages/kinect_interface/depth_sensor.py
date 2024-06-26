@@ -1,3 +1,8 @@
+import sys 
+import os
+
+# add this path to sys.path to import pykinect
+sys.path.append(os.path.dirname(__file__))
 from pykinect import nui
 import numpy as np
 import threading

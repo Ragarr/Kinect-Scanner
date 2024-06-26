@@ -1,6 +1,5 @@
-from packages.utils import *
-
 from packages.kinect_interface.depth_sensor import DepthSensor
+from packages.utils import *
 import matplotlib.pyplot as plt
 
 
