@@ -1,25 +1,34 @@
 import numpy as np
-from pyntcloud import PyntCloud
-import pandas as pd
-
+import open3d as o3d
 class FrameProcessor:
     
     # load the pol2car parameters from config/pol2car.npz
     pol2car_params = np.load('config/pol2car2.npz')
     
     @staticmethod
-    def depth_image_to_pointcloud(frame: np.ndarray) -> PyntCloud:
+    def depth_image_to_pointcloud(frame: np.ndarray):
         '''
         Converts a depth frame to a point cloud
         '''
         # Get the height and width of the frame
-        height, width = frame.shape
-        preprocessed_frame = FrameProcessor.filter_depth_image(frame)
+
+        preprocessed_frame = FrameProcessor.preprocess_img(frame)
+
         coords = FrameProcessor.depth_image_to_scientific_coordinates(preprocessed_frame)
-        pcd = PyntCloud(pd.DataFrame(coords, columns=['x', 'y', 'z'])) 
+        coords = np.ascontiguousarray(coords, dtype=np.float64)
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(coords)
         return pcd
         
-        
+    
+    @staticmethod
+    def preprocess_img(original_img:np.ndarray) -> np.ndarray:
+        # Step 1: Put the origin on the lower left position of the image:
+        # img = np.flipud(np.fliplr(original_img)) # flip the image vertically and horizontally ?¿ 
+        # Step 2: Filter (crop) the depth:
+        img = FrameProcessor.filter_depth_image(original_img)
+        return img
+    
     @staticmethod
     def raw_depth_to_radial_depth(img):
         r_scale, r_offset = FrameProcessor.pol2car_params['raw_z_to_r']
@@ -42,6 +51,7 @@ class FrameProcessor:
         z = r * FrameProcessor.pol2car_params['r_to_z']
         points = points = np.dstack((x, y, z)).reshape(-1, 3)
         points = FrameProcessor.scientific_coordinates_to_standard(points)
+
         for i in range(3):
             if filter[i] is not None:
                 # filter the points based on the filter
@@ -55,6 +65,10 @@ class FrameProcessor:
         
     
     @staticmethod
+    def print_pointcloud_mat_stats(mat):
+        print('min x: {0:.02f}, max x: {3:.02f}, min y: {1:.02f}, max y: {4:.02f}, min z: {2:.02f}, max z: {5:.02f}'.format(*mat.min(axis=0), *mat.max(axis=0)))
+    
+    @staticmethod
     def scientific_coordinates_to_standard(mat: np.ndarray) -> np.ndarray:
         # center y and invert:
         transformed_mat = (mat - np.array([[0, 2, 0]])) * np.array([[1, -1, 1]])
@@ -63,22 +77,13 @@ class FrameProcessor:
         return transformed_mat
     
     @staticmethod
-    def filter_depth_image(img: np.ndarray, min_depth: float=0, max_depth: float=255, flip_z:bool=False) -> np.ndarray:
-        '''
-        Filters a depth image based on a minimum and maximum depth
-        '''
-        # Create a mask for the depth image
-        mask = np.logical_and(img > min_depth, img < max_depth)
-        # Apply the mask to the depth image
-        filtered_img = img * mask
-        # Flip the z-axis if required
+    def filter_depth_image(img, min_distance=0, max_distance=255, flip_z=False):
+        # kinect depth images are 0 for far away:
+        # normalize the depth image to be between min_distance and max_distance
+        img = (img - np.min(img)) / (np.max(img) - np.min(img)) * (max_distance - min_distance) + min_distance
         if flip_z:
-            filtered_img = max_depth - filtered_img
-        return filtered_img
-    
-        
-        
-        
+            img = max_distance - img
+        return img
     
 
 if __name__ == "__main__":

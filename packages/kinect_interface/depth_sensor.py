@@ -7,8 +7,6 @@ from pykinect import nui
 import numpy as np
 import threading
 import functools 
-import ctypes as c
-
 
 _depth_semaphore = threading.Semaphore(0)
 _processing_complete = threading.Event()
@@ -64,6 +62,7 @@ class DepthSensor:
         _processing_complete.clear()
         _depth_semaphore.release()
         _processing_complete.wait()
+        
         return self.depth_frame
     
 
