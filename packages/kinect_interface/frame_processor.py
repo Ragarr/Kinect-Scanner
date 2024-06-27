@@ -23,8 +23,6 @@ class FrameProcessor:
     
     @staticmethod
     def preprocess_img(original_img:np.ndarray) -> np.ndarray:
-        # Step 1: Put the origin on the lower left position of the image:
-        # img = np.flipud(np.fliplr(original_img)) # flip the image vertically and horizontally ?¿ 
         # Step 2: Filter (crop) the depth:
         img = FrameProcessor.filter_depth_image(original_img)
         return img
@@ -74,6 +72,10 @@ class FrameProcessor:
         transformed_mat = (mat - np.array([[0, 2, 0]])) * np.array([[1, -1, 1]])
         # swap y and z:
         transformed_mat = transformed_mat[:, [0, 2, 1]]
+        
+        # rotate 90 degrees around z axis:
+        transformed_mat = transformed_mat @ np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]]) @ np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+        # transformed_mat = transformed_mat @ np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
         return transformed_mat
     
     @staticmethod
