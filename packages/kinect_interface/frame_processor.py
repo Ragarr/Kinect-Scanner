@@ -6,7 +6,7 @@ class FrameProcessor:
     pol2car_params = np.load('config/pol2car2.npz')
     
     @staticmethod
-    def depth_image_to_pointcloud(frame: np.ndarray, filter = [None, None, None], estimate_normals=True, downsample_size=0):
+    def depth_image_to_pointcloud(frame: np.ndarray, filter = [None, None, None], estimate_normals=True, downsample_size=0) -> o3d.geometry.PointCloud:
         '''
         Converts a depth frame to a point cloud
         '''
