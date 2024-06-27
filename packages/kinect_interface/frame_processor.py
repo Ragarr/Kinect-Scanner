@@ -6,7 +6,7 @@ class FrameProcessor:
     pol2car_params = np.load('config/pol2car2.npz')
     
     @staticmethod
-    def depth_image_to_pointcloud(frame: np.ndarray):
+    def depth_image_to_pointcloud(frame: np.ndarray, filter = [None, None, None], estimate_normals=True, downsample_size=0):
         '''
         Converts a depth frame to a point cloud
         '''
@@ -14,10 +14,18 @@ class FrameProcessor:
 
         preprocessed_frame = FrameProcessor.preprocess_img(frame)
 
-        coords = FrameProcessor.depth_image_to_scientific_coordinates(preprocessed_frame)
+        coords = FrameProcessor.depth_image_to_scientific_coordinates(preprocessed_frame, filter=filter)
+        if coords.shape[0] == 0:
+            print("No points in the point cloud")
+            
         coords = np.ascontiguousarray(coords, dtype=np.float64)
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(coords)
+        
+        if estimate_normals:
+            pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        if downsample_size > 0:
+            pcd = pcd.voxel_down_sample(voxel_size=downsample_size)
         return pcd
         
     
@@ -86,6 +94,8 @@ class FrameProcessor:
         if flip_z:
             img = max_distance - img
         return img
+    
+
     
 
 if __name__ == "__main__":

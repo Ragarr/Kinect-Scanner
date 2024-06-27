@@ -11,7 +11,7 @@ import functools
 _depth_semaphore = threading.Semaphore(0)
 _processing_complete = threading.Event()
 
-class DepthSensor:
+class Sensor:
     def __init__(self, resolution: str="640x480") -> None:
         if resolution == "640x480":
             self.height = 480
@@ -69,7 +69,7 @@ class DepthSensor:
     
 
 if __name__ == "__main__":
-    sensor = DepthSensor()
+    sensor = Sensor()
     depth_frame = sensor.get_depth_frame()
     import matplotlib.pyplot as plt
     plt.imshow(depth_frame)
