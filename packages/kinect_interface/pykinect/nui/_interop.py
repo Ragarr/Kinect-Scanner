@@ -11,6 +11,7 @@
 from __future__ import print_function
 
 import ctypes
+from ctypes import byref
 from pykinect.nui import KinectError, _NUIDLL
 from pykinect.nui.structs import (ImageFrame, ImageResolution, ImageType, 
                                   ImageViewArea,  SkeletonFrame, 

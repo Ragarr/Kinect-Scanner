@@ -51,6 +51,8 @@ class FrameProcessor:
         Returns:
             np.ndarray:  A numpy array containing the scientific coordinates of the points
         """
+        
+        
         r = FrameProcessor.raw_depth_to_radial_depth(image)
         x = r * FrameProcessor.pol2car_params['r_to_x']
         y = r * FrameProcessor.pol2car_params['r_to_y']

@@ -1,105 +1,90 @@
-import sys 
+import sys
 import os
-
-# add this path to sys.path to import pykinect
-sys.path.append(os.path.dirname(__file__))
+import threading
 from pykinect import nui
 import numpy as np
-import threading
-import functools 
-
-_depth_semaphore = threading.Semaphore(0)
-_color_semaphore = threading.Semaphore(0)
-
-_depth_complete = threading.Event()
-_color_complete = threading.Event()
-_video_stream_started = threading.Event()
-_depth_stream_started = threading.Event()
-
 
 class Sensor:
     def __init__(self, resolution: str="640x480") -> None:
         if resolution == "640x480":
             self.height = 480
             self.width = 640
-            self.kinect = nui.Runtime()
-            self.kinect.depth_frame_ready += functools.partial(self._on_depth_frame_ready)
-            self.kinect.depth_stream.open(nui.ImageStreamType.Depth, 2, nui.ImageResolution.resolution_640x480, nui.ImageType.Depth)
-            self.kinect.video_frame_ready += functools.partial(self._on_color_frame_ready)
-            self.kinect.video_stream.open(nui.ImageStreamType.Video, 2, nui.ImageResolution.resolution_640x480, nui.ImageType.Color)
-            self.depth_frame = np.zeros((480, 640), dtype=np.uint16)
-            self.color_frame = np.zeros((480, 640, 4), dtype=np.uint8)
         elif resolution == "320x240":
             self.height = 240
             self.width = 320
-            self.kinect = nui.Runtime()
-            self.kinect.depth_frame_ready += functools.partial(self._on_depth_frame_ready)
-            self.kinect.depth_stream.open(nui.ImageStreamType.Depth, 2, nui.ImageResolution.resolution_320x240, nui.ImageType.Depth)
-            self.kinect.video_frame_ready += functools.partial(self._on_color_frame_ready)
-            self.kinect.video_stream.open(nui.ImageStreamType.Video, 2, nui.ImageResolution.resolution_320x240, nui.ImageType.Color)
-            self.depth_frame = np.zeros((240, 320), dtype=np.uint16)
-            self.color_frame = np.zeros((240, 320, 4), dtype=np.uint8)
         else:
             raise ValueError("Invalid resolution, resolution must be either 640x480 or 320x240")
 
-    def __del__(self):
-        self.kinect.close()
-        del self.kinect       
-    
-    def _on_depth_frame_ready(self, frame):
-        global _depth_semaphore, _depth_complete, _depth_stream_started
-        _depth_stream_started.set()
-        print("depth frame ready")
-        _depth_semaphore.acquire()
-        frame.image.copy_bits(self.depth_frame.ctypes.data)
-        _depth_complete.set()
+        self.depth_frame_ready = threading.Event()
+        self.color_frame_ready = threading.Event()
+        self.capture_depth = threading.Event()  # Flag to control depth capture
+        self.capture_color = threading.Event()  # Flag to control color capture
         
-    
-    def get_depth_frame(self):
-        global _depth_semaphore, _depth_complete, _depth_stream_started
-        _depth_stream_started.wait()
-        _depth_complete.clear()
-        _depth_semaphore.release()
-        print("Waiting for depth flag")
-        _depth_complete.wait()
-        print("Depth flag set")
-        return self.depth_frame
-    
+        self.kinect = nui.Runtime()
+        self.kinect.depth_frame_ready += self._on_depth_frame_ready
+        self.kinect.video_frame_ready += self._on_color_frame_ready
+
+        self.kinect.video_stream.open(
+            nui.ImageStreamType.Video, 2, nui.ImageResolution.resolution_640x480 if resolution == "640x480" else nui.ImageResolution.resolution_320x240, nui.ImageType.Color)
+        self.kinect.depth_stream.open(
+            nui.ImageStreamType.Depth, 2, nui.ImageResolution.resolution_640x480 if resolution == "640x480" else nui.ImageResolution.resolution_320x240, nui.ImageType.Depth)
+
+        self.depth_frame = np.zeros((self.height, self.width), dtype=np.uint16)
+        self.color_frame = np.zeros((self.height, self.width, 4), dtype=np.uint8)
+
+    def __del__(self):
+        try:
+            self.kinect.close()
+            del self.kinect
+        except AttributeError:
+            pass
+
+    def _on_depth_frame_ready(self, frame):
+        if self.capture_depth.is_set():  # Check if depth capture is enabled
+            frame.image.copy_bits(self.depth_frame.ctypes.data)
+            self.depth_frame_ready.set()
+
     def _on_color_frame_ready(self, frame):
-        global _color_semaphore, _color_complete, _video_stream_started
-        _video_stream_started.set()
-        print("color frame ready")
-        _color_semaphore.acquire()
-        frame.image.copy_bits(self.color_frame.ctypes.data)
-        _color_complete.set()
-    
+        if self.capture_color.is_set():  # Check if color capture is enabled
+            frame.image.copy_bits(self.color_frame.ctypes.data)
+            self.color_frame_ready.set()
+
+    def get_depth_frame(self):
+        self.capture_depth.set()  # Enable depth capture
+        self.depth_frame_ready.wait(10)
+        if not self.depth_frame_ready.is_set():
+            self.capture_depth.clear()  # Disable depth capture if timeout
+            raise TimeoutError("Depth stream not started or no depth frame ready.")
+        self.depth_frame_ready.clear()
+        self.capture_depth.clear()  # Disable depth capture after frame is captured
+        return self.depth_frame
+
     def get_color_frame(self):
-        global _color_semaphore, _color_complete, _video_stream_started
-        _video_stream_started.wait()
-        _color_complete.clear()
-        _color_semaphore.release()
-        print("Waiting for color flag")
-        _color_complete.wait() 
-        print("Color flag set")       
+        self.capture_color.set()  # Enable color capture
+        self.color_frame_ready.wait(10)
+        if not self.color_frame_ready.is_set():
+            self.capture_color.clear()  # Disable color capture if timeout
+            raise TimeoutError("Video stream not started or no color frame ready.")
+        self.color_frame_ready.clear()
+        self.capture_color.clear()  # Disable color capture after frame is captured
         return self.color_frame
-    
+
     def get_rgbd_frame(self):
         depth_frame = self.get_depth_frame()
         color_frame = self.get_color_frame()
-        
+
         rgbad_frame = np.zeros((self.height, self.width, 5), dtype=np.uint16)
-        # transfer color frame to the first 4 channels, convert to uint16
         rgbad_frame[:, :, :4] = np.array(color_frame, dtype=np.uint16)
-        # transfer depth frame to the last channel, convert to uint16
-        rgbad_frame[:, :, 4] = depth_frame
+        # convert BGR to RGB
+        rgbad_frame[:, :, :3] = rgbad_frame[:, :, :3][:, :, ::-1]
         
+        rgbad_frame[:, :, 4] = depth_frame
+
         return rgbad_frame    
-    
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     sensor = Sensor()
     rgbad_frame = sensor.get_rgbd_frame()
-    plt.imshow(np.array(rgbad_frame[:, :, :3]), interpolation='nearest')
     plt.show()
     
