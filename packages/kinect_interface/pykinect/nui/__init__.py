@@ -104,6 +104,8 @@ class Device(object):
         return _NuiGetSensorCount()
 
 
+
+
 class Runtime(object):
     """Represents a Kinect sensor."""
 

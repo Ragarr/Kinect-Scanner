@@ -10,11 +10,13 @@ import threading
 class Sensor:
     def __init__(self, resolution: str="640x480") -> None:
         if resolution == "640x480":
-            self.height = 480
+            self.resolution = nui.ImageResolution.resolution_640x480
             self.width = 640
+            self.height = 480
         elif resolution == "320x240":
-            self.height = 240
+            self.resolution = nui.ImageResolution.resolution_320x240
             self.width = 320
+            self.height = 240
         else:
             raise ValueError("Invalid resolution, resolution must be either 640x480 or 320x240")
 
@@ -23,22 +25,23 @@ class Sensor:
         self.capture_depth = threading.Event()  # Flag to control depth capture
         self.capture_color = threading.Event()  # Flag to control color capture
         
-        self.kinect = nui.Runtime()
-        self.kinect.depth_frame_ready += self._on_depth_frame_ready
-        self.kinect.video_frame_ready += self._on_color_frame_ready
+        self.nui_runtime = nui.Runtime()
+        self.camera = nui.Camera(self.nui_runtime)
+        self.nui_runtime.depth_frame_ready += self._on_depth_frame_ready
+        self.nui_runtime.video_frame_ready += self._on_color_frame_ready
 
-        self.kinect.video_stream.open(
-            nui.ImageStreamType.Video, 2, nui.ImageResolution.resolution_640x480 if resolution == "640x480" else nui.ImageResolution.resolution_320x240, nui.ImageType.Color)
-        self.kinect.depth_stream.open(
-            nui.ImageStreamType.Depth, 2, nui.ImageResolution.resolution_640x480 if resolution == "640x480" else nui.ImageResolution.resolution_320x240, nui.ImageType.Depth)
+        self.nui_runtime.video_stream.open(
+            nui.ImageStreamType.Video, 2, self.resolution, nui.ImageType.Color)
+        self.nui_runtime.depth_stream.open(
+            nui.ImageStreamType.Depth, 2, self.resolution, nui.ImageType.Depth)
 
         self.depth_frame = np.zeros((self.height, self.width), dtype=np.uint16)
         self.color_frame = np.zeros((self.height, self.width, 4), dtype=np.uint8)
 
     def __del__(self):
         try:
-            self.kinect.close()
-            del self.kinect
+            self.nui_runtime.close()
+            del self.nui_runtime
         except AttributeError:
             pass
 
@@ -75,27 +78,45 @@ class Sensor:
     def get_rgbd_frame(self):
         depth_frame = self.get_depth_frame()
         color_frame = self.get_color_frame()
-
-        rgbad_frame = np.zeros((self.height, self.width, 4), dtype=np.uint16)
-        rgbad_frame[:, :, :3] = np.array(color_frame, dtype=np.uint16)[:, :, :3]
-        # remove the alpha channel
-        # convert BGR to RGB
-        rgbad_frame[:, :, :3] = rgbad_frame[:, :, :3][:, :, ::-1]
+        rgbd_frame = np.zeros((self.height, self.width, 4), dtype=np.uint16)
+        rgbd_frame[:, :, :3] = np.array(color_frame, dtype=np.uint16)[:, :, :3]
         
-        rgbad_frame[:, :, 3] = depth_frame
-        return rgbad_frame    
+        # for each x, y coordinate in the depth frame
+        for depth_y in range(self.height):
+            for depth_x in range(self.width):
+                color_x, color_y= self.camera.get_color_pixel_coordinates_from_depth_pixel(self.resolution, 
+                                                                         None, 
+                                                                         depth_x, depth_y, 
+                                                                         depth_frame[depth_y, depth_x])
+                
+                # scale the color_x and color_y to the color frame resolution 1280x1024 -> 640x480
+                x_scale = 640 / 1280
+                y_scale = 480 / 1024
+                color_x = int(color_x * x_scale)
+                color_y = int(color_y * y_scale)
+                               
+                if color_x >= 0 and color_x < self.width and color_y >= 0 and color_y < self.height:
+                    rgbd_frame[color_y, color_x, 3] = depth_frame[depth_y, depth_x]
+                
+        # change BGR to RGB
+        rgbd_frame[:, :, 2] = color_frame[:, :, 0]
+        rgbd_frame[:, :, 1] = color_frame[:, :, 1]
+        rgbd_frame[:, :, 0] = color_frame[:, :, 2]
+        
+                            
+        return rgbd_frame    
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     sensor = Sensor()
-    rgbad_frame = sensor.get_rgbd_frame()
+    rgbd_frame = sensor.get_rgbd_frame()
     # show color and depth frames
     plt.figure()
-    plt.imshow(rgbad_frame[:, :, :3])
+    plt.imshow(rgbd_frame[:, :, :3])
     plt.title("Color Frame")
     plt.axis("off")
     plt.figure()
-    plt.imshow(rgbad_frame[:, :, 3], cmap="gray")
+    plt.imshow(rgbd_frame[:, :, 3], cmap="gray")
     plt.title("Depth Frame")
     plt.axis("off")
     plt.show()
