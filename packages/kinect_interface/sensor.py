@@ -1,5 +1,3 @@
-import sys
-import os
 import threading
 from pykinect import nui
 import numpy as np
