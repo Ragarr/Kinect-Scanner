@@ -100,6 +100,12 @@ class FrameProcessor:
             img = max_distance - img
         return img
 
+    @staticmethod
+    def reduce_noise(pcd: o3d.geometry.PointCloud, noise_eps=0.02, min_neighbors=50):
+        clean_pcd = pcd.remove_radius_outlier(nb_points=min_neighbors, radius=noise_eps)
+        return clean_pcd
+        
+        
 
 if __name__ == "__main__":
     print("This file is not meant to be run directly. Import it into another file.")
