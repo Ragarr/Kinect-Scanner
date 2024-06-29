@@ -1,6 +1,11 @@
-import threading
+import sys 
+import os
+
+# add this path to sys.path to import pykinect
+sys.path.append(os.path.dirname(__file__))
 from pykinect import nui
 import numpy as np
+import threading
 
 class Sensor:
     def __init__(self, resolution: str="640x480") -> None:
@@ -71,18 +76,29 @@ class Sensor:
         depth_frame = self.get_depth_frame()
         color_frame = self.get_color_frame()
 
-        rgbad_frame = np.zeros((self.height, self.width, 5), dtype=np.uint16)
-        rgbad_frame[:, :, :4] = np.array(color_frame, dtype=np.uint16)
+        rgbad_frame = np.zeros((self.height, self.width, 4), dtype=np.uint16)
+        rgbad_frame[:, :, :3] = np.array(color_frame, dtype=np.uint16)[:, :, :3]
+        # remove the alpha channel
         # convert BGR to RGB
         rgbad_frame[:, :, :3] = rgbad_frame[:, :, :3][:, :, ::-1]
         
-        rgbad_frame[:, :, 4] = depth_frame
-
+        rgbad_frame[:, :, 3] = depth_frame
         return rgbad_frame    
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     sensor = Sensor()
     rgbad_frame = sensor.get_rgbd_frame()
+    # show color and depth frames
+    plt.figure()
+    plt.imshow(rgbad_frame[:, :, :3])
+    plt.title("Color Frame")
+    plt.axis("off")
+    plt.figure()
+    plt.imshow(rgbad_frame[:, :, 3], cmap="gray")
+    plt.title("Depth Frame")
+    plt.axis("off")
     plt.show()
+    
+    
     
