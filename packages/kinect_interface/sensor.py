@@ -6,6 +6,8 @@ sys.path.append(os.path.dirname(__file__))
 from pykinect import nui
 import numpy as np
 import threading
+from scipy.ndimage import map_coordinates
+
 
 class Sensor:
     def __init__(self, resolution: str="640x480") -> None:
@@ -29,7 +31,7 @@ class Sensor:
         self.camera = nui.Camera(self.nui_runtime)
         self.nui_runtime.depth_frame_ready += self._on_depth_frame_ready
         self.nui_runtime.video_frame_ready += self._on_color_frame_ready
-
+        
         self.nui_runtime.video_stream.open(
             nui.ImageStreamType.Video, 2, self.resolution, nui.ImageType.Color)
         self.nui_runtime.depth_stream.open(
@@ -48,6 +50,7 @@ class Sensor:
     def _on_depth_frame_ready(self, frame):
         if self.capture_depth.is_set():  # Check if depth capture is enabled
             frame.image.copy_bits(self.depth_frame.ctypes.data)
+            # change 0 to 65535 in the depth frame
             self.depth_frame_ready.set()
 
     def _on_color_frame_ready(self, frame):
@@ -74,12 +77,48 @@ class Sensor:
         self.color_frame_ready.clear()
         self.capture_color.clear()  # Disable color capture after frame is captured
         return self.color_frame
+    
+    def __zoom_image(self, img: np.ndarray , S:float) -> np.ndarray:
+        """
+        Zoom in or out an image by a factor S using bilinear interpolation.
+        Args:
+            img (np.ndarray): image to be zoomed
+            S (float): zoom factor
+
+        Returns:
+            np.ndarray: zoomed image that has same resolution as the input image
+        """
+        N, M, _ = img.shape
+        center_y, center_x = N // 2, M // 2
+
+        # Crear cuadrículas de coordenadas
+        y_indices, x_indices = np.indices((N, M))
+
+        # Reescalar estas coordenadas
+        y_indices = (y_indices - center_y) / S + center_y
+        x_indices = (x_indices - center_x) / S + center_x
+
+        # Inicializar la imagen de salida
+        zoomed_img = np.zeros_like(img)
+
+        # Aplicar la interpolación para cada canal RGBA
+        for i in range(4):
+            zoomed_img[..., i] = map_coordinates(img[..., i], [y_indices, x_indices], order=1, mode='nearest')
+        return zoomed_img
+
 
     def get_rgbd_frame(self):
+        
+        zoom_factor = 1.15
+        x_rolling_factor = -4
+        y_rolling_factor = -20
+        
         depth_frame = self.get_depth_frame()
         color_frame = self.get_color_frame()
+        
+        color_frame = self.__zoom_image(color_frame, zoom_factor)
+        
         rgbd_frame = np.zeros((self.height, self.width, 4), dtype=np.uint16)
-        rgbd_frame[:, :, :3] = np.array(color_frame, dtype=np.uint16)[:, :, :3]
         
         # for each x, y coordinate in the depth frame
         for depth_y in range(self.height):
@@ -96,14 +135,24 @@ class Sensor:
                 color_y = int(color_y * y_scale)
                                
                 if color_x >= 0 and color_x < self.width and color_y >= 0 and color_y < self.height:
-                    rgbd_frame[color_y, color_x, 3] = depth_frame[depth_y, depth_x]
+                    rgbd_frame[depth_y, depth_x, 3] = depth_frame[depth_y, depth_x] 
+                    rgbd_frame[depth_y, depth_x, 2] = color_frame[color_y, color_x, 0]  
+                    rgbd_frame[depth_y, depth_x, 1] = color_frame[color_y, color_x, 1]
+                    rgbd_frame[depth_y, depth_x, 0] = color_frame[color_y, color_x, 2]
                 
         # change BGR to RGB
         rgbd_frame[:, :, 2] = color_frame[:, :, 0]
         rgbd_frame[:, :, 1] = color_frame[:, :, 1]
         rgbd_frame[:, :, 0] = color_frame[:, :, 2]
         
-                            
+        # move just the color 10 px to the left, without reintroducting the same pixels
+        rgbd_frame[:, :, :3] = np.roll(rgbd_frame[:, :, :3], x_rolling_factor, axis=1)
+        rgbd_frame[:, :, :3] = np.roll(rgbd_frame[:, :, :3], y_rolling_factor, axis=0)
+        
+        # remove the 0 depth values and the reintruduced pixels
+        rgbd_frame[rgbd_frame[:, :, 3] == 0] = 0
+        rgbd_frame[rgbd_frame[:, :, 3] == 65535] = 0
+        
         return rgbd_frame    
 
 if __name__ == "__main__":

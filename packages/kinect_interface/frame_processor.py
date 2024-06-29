@@ -22,9 +22,10 @@ class FrameProcessor:
         else:
             raise ValueError("Frame must be either 2D (depth only) or 4D (r, g, b, depth).")
         
+        
         preprocessed_frame = FrameProcessor.preprocess_img(depth_frame)
         coords = FrameProcessor.depth_image_to_scientific_coordinates(preprocessed_frame, filter=filter)
-        
+
         if coords.shape[0] == 0:
             print("No points in the point cloud")
             
@@ -42,11 +43,15 @@ class FrameProcessor:
         if downsample_size > 0:
             pcd = pcd.voxel_down_sample(voxel_size=downsample_size)
         
+        # remove the points that are pure black
+        pcd = pcd.select_by_index(np.where(np.sum(np.asarray(pcd.colors), axis=1) > 0)[0])
+        
         return pcd
 
     @staticmethod
     def preprocess_img(original_img: np.ndarray) -> np.ndarray:
         img = FrameProcessor.filter_depth_image(original_img)
+        
         return img
     
     @staticmethod
@@ -58,7 +63,7 @@ class FrameProcessor:
     def depth_image_to_scientific_coordinates(image: np.ndarray, filter=[None, None, None], flatten=True) -> np.ndarray:
         r = FrameProcessor.raw_depth_to_radial_depth(image)
         x = r * FrameProcessor.pol2car_params['r_to_x']
-        y = r * FrameProcessor.pol2car_params['r_to_y']
+        y = r * FrameProcessor.pol2car_params['r_to_y'] 
         z = r * FrameProcessor.pol2car_params['r_to_z']
         points = np.dstack((x, y, z)).reshape(-1, 3)
         points = FrameProcessor.scientific_coordinates_to_standard(points)
