@@ -26,8 +26,10 @@ class Sensor:
         self.color_frame_ready = threading.Event()
         self.capture_depth = threading.Event()  # Flag to control depth capture
         self.capture_color = threading.Event()  # Flag to control color capture
-        
-        self.nui_runtime = nui.Runtime()
+        try:
+            self.nui_runtime = nui.Runtime()
+        except WindowsError:
+            raise WindowsError("Error initializing Kinect runtime. Make sure Kinect is connected.")
         self.camera = nui.Camera(self.nui_runtime)
         self.nui_runtime.depth_frame_ready += self._on_depth_frame_ready
         self.nui_runtime.video_frame_ready += self._on_color_frame_ready

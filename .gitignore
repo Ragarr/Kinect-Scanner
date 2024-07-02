@@ -1,6 +1,8 @@
 test.py
 test.ipynb
 *.ply
+frames/
+frames
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
