@@ -30,9 +30,11 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
+  <!--
   <a href="https://github.com/Ragarr/Kinect-Scanner">
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>
+  -->
 
 <h3 align="center">Kinect 3D Scanner</h3>
 
